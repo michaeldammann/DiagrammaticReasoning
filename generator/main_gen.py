@@ -58,6 +58,6 @@ if __name__ == "__main__":
     parser.add_argument('--savepath', required=True, type=str)
     parser.add_argument('--n_seqs', required=True, type=int)
     parser.add_argument('--number_of_max_movements', required=False, default=5, type=int)
-    parser.add_argument('--chance_per_still_spot', required=False, default=0.5, type=int)
+    parser.add_argument('--chance_per_still_spot', required=False, default=0.5, type=float)
     args = parser.parse_args()
     main(args.savepath, args.n_seqs, args.number_of_max_movements, args.chance_per_still_spot)
