@@ -3,8 +3,7 @@ import os
 import numpy as np
 from os.path import isfile, join
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, Flatten, LSTM, GRU, Dense, Reshape, \
-    Activation, BatchNormalization
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, ConvLSTM2D, Activation, BatchNormalization
 from keras.models import Model
 from keras.optimizers import RMSprop, Adam
 from keras.models import load_model
@@ -16,58 +15,59 @@ from matplotlib import pyplot as plt
 from preprocessing_utils import preprocess_seqs
 
 
-def define_generator(input_img, lstm_units, latent_units, multiplier=32):
-    x = TimeDistributed(Conv2D(1 * multiplier, (3, 3), padding='same'))(input_img)  # 32 x 32 x 32
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)  # 16 x 16 x 32
-    x = TimeDistributed(Conv2D(2 * multiplier, (3, 3), padding='same'))(x)  # 16 x 16 x 64
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)  # 8 x 8 x 64
-    x = TimeDistributed(Conv2D(4 * multiplier, (3, 3), padding='same'))(x)  # 8 x 8 x 128
+def define_generator(imgs, multiplier, n_convlstmfilters):
+    # Encoder
+
+    x = TimeDistributed(Conv2D(1 * multiplier, (3, 3), padding='same'))(imgs)
     x = TimeDistributed(Activation('relu'))(x)
     x = TimeDistributed(BatchNormalization())(x)
     x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
-    x = TimeDistributed(Conv2D(8 * multiplier, (3, 3), padding='same'))(x)  # 8 x 8 x 128
+    x = TimeDistributed(Conv2D(2 * multiplier, (3, 3), padding='same'))(x)
     x = TimeDistributed(Activation('relu'))(x)
     x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)  #
+    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
+    x = TimeDistributed(Conv2D(4 * multiplier, (3, 3), padding='same'))(x)
+    x = TimeDistributed(Activation('relu'))(x)
+    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
+    x = TimeDistributed(Conv2D(8 * multiplier, (3, 3), padding='same'))(x)
+    x = TimeDistributed(Activation('relu'))(x)
+    x = TimeDistributed(BatchNormalization())(x)
+    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
 
-    x = TimeDistributed(Flatten())(x)
-    x = TimeDistributed(Dense(latent_units))(x)
-    x = LSTM(lstm_units, return_sequences=False, name='LSTM')(x)
-    x = Dense(4 * 4 * 8 * multiplier)(x)
-    x = Reshape((4, 4, 8 * multiplier))(x)
+    # ConvLSTM
 
-    # decoder
+    x = ConvLSTM2D(n_convlstmfilters, 3, padding='same', return_sequences=True)(x)
+    x = ConvLSTM2D(n_convlstmfilters, 3, padding='same')(x)
 
-    x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    # Decoder
+
+    x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)  # 16x16x128
-    x = Conv2D(4 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(4 * multiplier, (3, 3), padding='same')(x)
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)  # 16x16x128
-    x = Conv2D(2 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(2 * multiplier, (3, 3), padding='same')(x)
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)  # 16x16x128
-    x = Conv2D(1 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(1 * multiplier, (3, 3), padding='same')(x)
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)  # 16x16x128
-    x = Conv2D(1, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(1, (3, 3), padding='same')(x)
     x = Activation('sigmoid')(x)
 
     return x
 
 
-def train_model(model_name, save_path, lstm_units, latent_units, multiplier, trainseq, trainseqy, valseq, valseqy, batch_size=32,
+def train_model(model_name, save_path, lstm_units, multiplier, trainseq, trainseqy, valseq, valseqy, batch_size=32,
                 epochs=50, save_history=True, loss='mae'):
     input_img = Input(shape=(5, 64, 64, 1))
-    generator = Model(input_img, define_generator(input_img, lstm_units, latent_units, multiplier))
+    generator = Model(input_img, define_generator(input_img, lstm_units, multiplier))
     generator.compile(loss=loss, optimizer=Adam())
     name = model_name
 
@@ -142,8 +142,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_path', required=True, type=str)
     parser.add_argument('--model_name', required=True, type=str)
 
-    parser.add_argument('--lstm_units', required=False, default=16, type=int)
-    parser.add_argument('--latent_units', required=False, default=32, type=int)
+    parser.add_argument('--n_convlstmfilters', required=False, default=32, type=int)
     parser.add_argument('--multiplier', required=False, default=32, type=int)
     parser.add_argument('--batch_size', required=False, default=32, type=int)
     parser.add_argument('--epochs', required=False, default=50, type=int)
@@ -158,6 +157,6 @@ if __name__ == "__main__":
                                                               preprocessed_data[2], preprocessed_data[3], \
                                                               preprocessed_data[4], preprocessed_data[5]
 
-    train_model(args.model_name, args.model_path, args.lstm_units, args.latent_units, args.multiplier, trainseq, trainseqy, valseq,
+    train_model(args.model_name, args.model_path, args.n_convlstmfilters, args.multiplier, trainseq, trainseqy, valseq,
                 valseqy, batch_size=args.batch_size, epochs=args.epochs, save_history=args.save_history, loss=args.loss)
     test_model(args.model_name, args.model_path, testseq, testseqy)
