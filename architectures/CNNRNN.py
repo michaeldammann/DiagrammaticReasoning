@@ -64,7 +64,7 @@ def define_generator(input_img, lstm_units, latent_units, multiplier=32):
     return x
 
 
-def train_model(model_name, save_path, lstm_units, latent_units, multiplier, trainseq, trainseqy, valseq, valseqy, batch_size=32,
+def train_model(model_name, save_path, lstm_units, latent_units, multiplier, patience, trainseq, trainseqy, valseq, valseqy, batch_size=32,
                 epochs=50, save_history=True, loss='mae'):
     input_img = Input(shape=(5, 64, 64, 1))
     generator = Model(input_img, define_generator(input_img, lstm_units, latent_units, multiplier))
@@ -75,7 +75,7 @@ def train_model(model_name, save_path, lstm_units, latent_units, multiplier, tra
 
     filepath = join(save_path, name, 'bestmodel.hdf5')
     checkpoint = ModelCheckpoint(filepath, verbose=1, save_best_only=True)
-    early_stopping = EarlyStopping(monitor='val_loss', patience=10)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
     callbacks_list = [checkpoint, early_stopping]
 
     generator_train = generator.fit(x=trainseq, y=trainseqy, batch_size=batch_size, epochs=epochs, verbose=1,
@@ -147,17 +147,18 @@ if __name__ == "__main__":
     parser.add_argument('--multiplier', required=False, default=32, type=int)
     parser.add_argument('--batch_size', required=False, default=32, type=int)
     parser.add_argument('--epochs', required=False, default=50, type=int)
+    parser.add_argument('--patience', required=False, default=10, type=int)
     parser.add_argument('--loss', required=False, default='mae', type=str)
 
     parser.add_argument('--save_history', required=False, default=True, type=bool)
 
     args = parser.parse_args()
 
-    preprocessed_data = preprocess_seqs(args.dataset_path)
+    preprocessed_data = preprocess_seqs(args.dataset_path, is_timeseries=True)
     trainseq, trainseqy, valseq, valseqy, testseq, testseqy = preprocessed_data[0], preprocessed_data[1], \
                                                               preprocessed_data[2], preprocessed_data[3], \
                                                               preprocessed_data[4], preprocessed_data[5]
 
-    train_model(args.model_name, args.model_path, args.lstm_units, args.latent_units, args.multiplier, trainseq, trainseqy, valseq,
+    train_model(args.model_name, args.model_path, args.lstm_units, args.latent_units, args.multiplier, args.patience, trainseq, trainseqy, valseq,
                 valseqy, batch_size=args.batch_size, epochs=args.epochs, save_history=args.save_history, loss=args.loss)
     test_model(args.model_name, args.model_path, testseq, testseqy)

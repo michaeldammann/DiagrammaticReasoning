@@ -15,14 +15,22 @@ import argparse
 
 from matplotlib import pyplot as plt
 
-def newseqs(seqy):
+def newseqs_timeseries(seqy):
     newseqy = np.zeros((len(seqy), 64, 64, 1))
     for i in range(0, len(seqy)):
         newseqy[i] = seqy[i][4]
     return newseqy
 
+def rearrange_fullycnn(seq):
+    seq=np.reshape(seq,(len(seq), 5, 64, 64))
+    newseq=np.zeros((len(seq),64,64,5))
+    for i in range(0, len(seq)):
+        images=seq[i]
+        for j in range(0,len(images)): #5
+            newseq[i,:,:,j]=images[j]
+    return newseq
 
-def preprocess_seqs(directory_path, split=(.8, .9)):
+def preprocess_seqs(directory_path, split=(.8, .9), is_timeseries=False, is_fullycnn=False):
     allxseqs = []
     allyseqs = []
 
@@ -67,9 +75,19 @@ def preprocess_seqs(directory_path, split=(.8, .9)):
     trainseq, valseq, testseq = np.split(allxseqs, [int(len(allxseqs) * split[0]), int(len(allxseqs) * split[1])])
     trainseqy, valseqy, testseqy = np.split(allyseqs, [int(len(allyseqs) * split[0]), int(len(allyseqs) * split[1])])
 
-    trainseqy = newseqs(trainseqy)
-    valseqy = newseqs(valseqy)
-    testseqy = newseqs(testseqy)
+
+    trainseqy = newseqs_timeseries(trainseqy)
+    valseqy = newseqs_timeseries(valseqy)
+    testseqy = newseqs_timeseries(testseqy)
+
+    if is_fullycnn:
+        trainseq = rearrange_fullycnn(trainseq)
+        valseq = rearrange_fullycnn(valseq)
+        testseq = rearrange_fullycnn(testseq)
+
+        trainseq = np.reshape(np.reshape(trainseq, (len(trainseq), 5, 64, 64)), (len(trainseq), 64, 64, 5))
+        valseq = np.reshape(np.reshape(valseq, (len(valseq), 5, 64, 64)), (len(valseq), 64, 64, 5))
+        testseq = np.reshape(np.reshape(testseq, (len(testseq), 5, 64, 64)), (len(testseq), 64, 64, 5))
 
     a = [trainseq, trainseqy, valseq, valseqy, testseq, testseqy]
     return a

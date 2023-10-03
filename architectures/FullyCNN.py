@@ -3,7 +3,8 @@ import os
 import numpy as np
 from os.path import isfile, join
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, ConvLSTM2D, Activation, BatchNormalization
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, Flatten, LSTM, GRU, Dense, Reshape, \
+    Activation, BatchNormalization
 from keras.models import Model
 from keras.optimizers import RMSprop, Adam
 from keras.models import load_model
@@ -15,62 +16,55 @@ from matplotlib import pyplot as plt
 from preprocessing_utils import preprocess_seqs
 
 
-def define_generator(imgs, multiplier, n_convlstmfilters):
-    # Encoder
-
-    x = TimeDistributed(Conv2D(1 * multiplier, (3, 3), padding='same'))(imgs)
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
-    x = TimeDistributed(Conv2D(2 * multiplier, (3, 3), padding='same'))(x)
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
-    x = TimeDistributed(Conv2D(4 * multiplier, (3, 3), padding='same'))(x)
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
-    x = TimeDistributed(Conv2D(8 * multiplier, (3, 3), padding='same'))(x)
-    x = TimeDistributed(Activation('relu'))(x)
-    x = TimeDistributed(BatchNormalization())(x)
-    x = TimeDistributed(MaxPooling2D(pool_size=(2, 2)))(x)
-
-    # ConvLSTM
-
-    x = ConvLSTM2D(n_convlstmfilters, 3, padding='same', return_sequences=True)(x)
-    x = ConvLSTM2D(n_convlstmfilters, 3, padding='same')(x)
-
-    # Decoder
-
-    x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)
+def define_generator(input_img, multiplier=32):
+    # encoder
+    # input = 32 x 32 x 1
+    x = Conv2D(1 * multiplier, (3, 3), padding='same', dilation_rate=2)(input_img)  # 32 x 32 x 32
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(4 * multiplier, (3, 3), padding='same')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)  # 16 x 16 x 32
+    x = Conv2D(2 * multiplier, (3, 3), padding='same', dilation_rate=2)(x)  # 16 x 16 x 64
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(2 * multiplier, (3, 3), padding='same')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)  # 8 x 8 x 64
+    x = Conv2D(4 * multiplier, (3, 3), padding='same')(x)  # 8 x 8 x 128
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(1 * multiplier, (3, 3), padding='same')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)  # 8 x 8 x 128
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(1, (3, 3), padding='same')(x)
-    x = Activation('sigmoid')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)  #
+
+    #decoder
+    x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = Activation('relu')(x)
+    x = BatchNormalization()(x)
+    x = UpSampling2D((2, 2))(x)  # 16x16x128
+    x = Conv2D(4 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = Activation('relu')(x)
+    x = BatchNormalization()(x)
+    x = UpSampling2D((2, 2))(x)  # 16x16x128
+    x = Conv2D(2 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = Activation('relu')(x)
+    x = BatchNormalization()(x)
+    x = UpSampling2D((2, 2))(x)  # 16x16x128
+    x = Conv2D(1 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
+    x = Activation('relu')(x)
+    x = BatchNormalization()(x)
+    x = UpSampling2D((2, 2))(x)  # 16x16x128
+    x = Conv2D(1, (3, 3), padding='same')(x)  # 4 x 4 x 128
 
     return x
 
 
-def train_model(model_name, save_path, lstm_units, multiplier, patience, trainseq, trainseqy, valseq, valseqy, batch_size=32,
+def train_model(model_name, save_path, multiplier, patience, trainseq, trainseqy, valseq, valseqy, batch_size=32,
                 epochs=50, save_history=True, loss='mae'):
-    input_img = Input(shape=(5, 64, 64, 1))
-    generator = Model(input_img, define_generator(input_img, lstm_units, multiplier))
+    input_img = Input(shape=(64, 64, 5))
+    generator = Model(input_img, define_generator(input_img, multiplier))
     generator.compile(loss=loss, optimizer=Adam())
     name = model_name
-
+    print(generator.summary())
     os.makedirs(os.path.dirname(join(save_path, name)), exist_ok=True)
 
     filepath = join(save_path, name, 'bestmodel.hdf5')
@@ -131,7 +125,8 @@ def test_model(model_name, save_path, testseq, testseqy):
                     'RGB').save(
                     join(save_path, name, 'testimages', str(i), f'{j}.png'))
             else:
-                Image.fromarray((np.clip(testseq[i][j].reshape(64, 64), 0.0, 1.0) * 255).astype(np.uint8)).convert(
+                Image.fromarray(
+                    (np.clip(testseq[i, :, :, j].reshape(64, 64), 0.0, 1.0) * 255).astype(np.uint8)).convert(
                     'RGB').save(
                     join(save_path, name, 'testimages', str(i), f'{j}.png'))
 
@@ -142,7 +137,6 @@ if __name__ == "__main__":
     parser.add_argument('--model_path', required=True, type=str)
     parser.add_argument('--model_name', required=True, type=str)
 
-    parser.add_argument('--n_convlstmfilters', required=False, default=32, type=int)
     parser.add_argument('--multiplier', required=False, default=32, type=int)
     parser.add_argument('--batch_size', required=False, default=32, type=int)
     parser.add_argument('--epochs', required=False, default=50, type=int)
@@ -153,11 +147,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    preprocessed_data = preprocess_seqs(args.dataset_path, is_timeseries=True)
+    preprocessed_data = preprocess_seqs(args.dataset_path, is_fullycnn=True)
     trainseq, trainseqy, valseq, valseqy, testseq, testseqy = preprocessed_data[0], preprocessed_data[1], \
                                                               preprocessed_data[2], preprocessed_data[3], \
                                                               preprocessed_data[4], preprocessed_data[5]
 
-    train_model(args.model_name, args.model_path, args.n_convlstmfilters, args.multiplier, args.patience, trainseq, trainseqy, valseq,
+    train_model(args.model_name, args.model_path, args.multiplier, args.patience, trainseq, trainseqy, valseq,
                 valseqy, batch_size=args.batch_size, epochs=args.epochs, save_history=args.save_history, loss=args.loss)
     test_model(args.model_name, args.model_path, testseq, testseqy)
