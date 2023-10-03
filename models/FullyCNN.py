@@ -3,8 +3,8 @@ import os
 import numpy as np
 from os.path import isfile, join
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, Flatten, LSTM, GRU, Dense, Reshape, \
-    Activation, BatchNormalization
+from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, TimeDistributed, Flatten, LSTM, GRU, Dense, \
+    Reshape, Activation, BatchNormalization
 from keras.models import Model
 from keras.optimizers import RMSprop, Adam
 from keras.models import load_model
@@ -36,7 +36,7 @@ def define_generator(input_img, multiplier=32):
     x = BatchNormalization()(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)  #
 
-    #decoder
+    # decoder
     x = Conv2D(8 * multiplier, (3, 3), padding='same')(x)  # 4 x 4 x 128
     x = Activation('relu')(x)
     x = BatchNormalization()(x)
